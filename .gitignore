@@ -15,3 +15,5 @@
 # vendor/
 *.mmdb
 cmd/lambda/main
+build/geoip.zip
+build/function.zip

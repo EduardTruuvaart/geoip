@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+##########################################################################
+#  Parameters                                                            #
+##########################################################################
+Parameters:
+  BucketName:
+    Type: String
+    Default: eduardtruuvaart-geoip
+  BucketKey:
+    Type: String
+    Default: GeoIP2-Country.mmdb
+
+##########################################################################
+#  Global values that are applied to all resources                       #
+##########################################################################
+Globals:
+  Function:
+    MemorySize: 512
+    Architectures: ["arm64"]
+    Runtime: provided.al2
+    Timeout: 29
+    Layers:
+      - !Sub arn:aws:lambda:${AWS::Region}:580247275435:layer:LambdaInsightsExtension-Arm64:1
+
+Resources:
+##########################################################################
+#  API Gateway HTTP API                                                  #
+# ##########################################################################
+  AccessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 30
+      LogGroupName: !Sub "/api-gateway/${AWS::StackName}/APIAccessLogs-go"
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      AccessLogSettings:
+        DestinationArn: !GetAtt AccessLogs.Arn
+        Format: '{ "requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","routeKey":"$context.routeKey", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength" }'
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+
+##########################################################################
+#   Lambda Function                                                      #
+##########################################################################
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../build/geoip.zip
+      Handler: main
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "s3:GetObject"
+              Resource:
+                - !Sub "arn:aws:s3:::${BucketName}/*"
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref BucketName
+          BUCKET_KEY: !Ref BucketKey
+      Events:
+        countrycode:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /countrycode
+            Method: GET
